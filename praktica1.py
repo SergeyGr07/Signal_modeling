@@ -80,6 +80,24 @@ def first_method(fsk_signal):
     return result
 
 
+def third_method(t, fsk_signal):
+    ones_cos = np.cos(2 * np.pi * 6000 * t - (np.pi) / 2)
+    zeros_cos = np.cos(2 * np.pi * 2000 * t - (np.pi) / 2)
+
+    zeros_signal = fsk_signal * zeros_cos
+    ones_signal = fsk_signal * ones_cos
+
+    filt_zeros = butter_lowpass_filter(zeros_signal, 2000, 100000)
+
+    filt_ones = butter_lowpass_filter(ones_signal, 2000, 100000)
+
+    total_signal = (filt_ones - filt_zeros) + 0.8
+
+    comp_sign = comparator(total_signal, 0.9)
+
+    return comp_sign
+
+
 def amplitude_demodulation(signal):
     analytic_signal = hilbert(signal)
     amplitude_envelope = np.abs(analytic_signal)
@@ -93,14 +111,77 @@ def filter_bandpass(filter_freq, sampling_rate, noisy_fsk_signal):
     return filtered_signal0
 
 
-def phase_inverter(envelope):
-    phase = np.angle(envelope)
-    inverted_envelope = np.exp(1j * -phase)
-    return inverted_envelope
-
-
 def comparator(envelope, threshold):
     return np.where(envelope > threshold, 1, 0)
+
+
+def correlation_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
+    signal_length = len(noisy_fsk_signal)
+
+    carrier_signal = np.sin(2 * np.pi * carrier_freq * np.arange(signal_length) / sampling_rate)
+
+    correlated_signal = noisy_fsk_signal * carrier_signal
+    # correlated_signal = filter_bandpass(2000, sampling_rate, correlated_signal)
+    # filtered_signal = butter_lowpass_filter(noisy_fsk_signal, 2000, sampling_rate)
+    # Интегратор
+    integrator_function = np.cumsum(correlated_signal) / sampling_rate
+
+    # direvative_function = np.
+
+    # выделить рост, постоянные сместить к нулю, сделать пилообразный
+
+    threshold = 0.4
+
+    demodulated_signal = comparator(integrator_function, threshold)
+
+    return integrator_function, correlated_signal
+
+
+def butter_lowpass_filter(data, cutoff_freq, sampling_rate, order=5):
+    nyquist = 0.5 * sampling_rate
+    normal_cutoff = cutoff_freq / nyquist
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    filtered_data = lfilter(b, a, data)
+    return filtered_data
+
+
+# infradyne
+def superheterodyne_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
+    # Определение длины сигнала.
+    signal_length = len(noisy_fsk_signal)
+
+    # Создание сигнала опорной частоты.
+    carrier_signal = np.sin(2 * np.pi * carrier_freq * np.arange(signal_length) / sampling_rate)
+
+    # Перемножение сигнала опорной частоты и шумового FSK сигнала.
+    correlated_signal = noisy_fsk_signal * carrier_signal
+
+    # Фильтрация полосы пропускания.
+    # Добавление полосового фильтра от 21000 до 27000 Гц.
+    low_cutoff = 21000
+    high_cutoff = 27000
+    nyquist = 0.5 * sampling_rate
+    low = low_cutoff / nyquist
+    high = high_cutoff / nyquist
+    b, a = butter(N=6, Wn=[low, high], btype='band')
+    filtered_signal = lfilter(b, a, correlated_signal)
+
+    low_cutoff = 24000
+    high_cutoff = 28000
+    nyquist = 0.5 * sampling_rate
+    low = low_cutoff / nyquist
+    high = high_cutoff / nyquist
+    b, a = butter(N=6, Wn=[low, high], btype='band')
+    filtered_signal = lfilter(b, a, filtered_signal)
+
+    # Амплитудная детекция.
+    envelope_signal = amplitude_demodulation(filtered_signal)
+
+    # Пороговое детектирование.
+    threshold = 0.4
+    demodulated_signal = comparator(envelope_signal, threshold)
+
+    return envelope_signal, filtered_signal, noisy_fsk_signal
 
 
 def main():
@@ -117,20 +198,20 @@ def main():
     t, fsk_signal = generate_fsk_signal(binary_sequence, bit_rate, carrier_freq1, carrier_freq2, sampling_rate)
 
     # Построение осциллограммы и спектра FSK сигнала
-    plot_waveform(t, fsk_signal, 'FSK Signal')
-    plot_spectrum(fsk_signal, sampling_rate, 'FSK Signal Spectrum')
+    # plot_waveform(t, fsk_signal, 'FSK Signal')
+    # plot_spectrum(fsk_signal, sampling_rate, 'FSK Signal Spectrum')
 
     # Добавление шума к сигналу
     snr_dB = 40  # отношение сигнал-шум в децибелах
     noisy_fsk_signal = add_noise(fsk_signal, snr_dB)
 
     # Построение графика сигнала с шумом
-    plot_waveform(t, noisy_fsk_signal, 'Noisy FSK Signal')
+    # plot_waveform(t, noisy_fsk_signal, 'Noisy FSK Signal')
 
     # First method
 
     first_signal = first_method(noisy_fsk_signal)
-    plot_waveform(t, first_signal, 'First Method Signal')
+    # plot_waveform(t, first_signal, 'First Method Signal')
 
     # Second method
     # Фильтрация для значения 0
@@ -138,27 +219,63 @@ def main():
     filtered_signal0 = filter_bandpass(filter_freq0, sampling_rate, noisy_fsk_signal)
 
     # Построение графика отфильтрованного сигнала для значения 0
-    plot_waveform(t, filtered_signal0, 'Filtered Signal for 0')
+    # plot_waveform(t, filtered_signal0, 'Filtered Signal for 0')
 
     # Фильтрация для значения 1
     filter_freq1 = 6000
     filtered_signal1 = filter_bandpass(filter_freq1, sampling_rate, noisy_fsk_signal)
 
     # Построение графика отфильтрованного сигнала для значения 1
-    plot_waveform(t, filtered_signal1, 'Filtered Signal for 1')
+    # plot_waveform(t, filtered_signal1, 'Filtered Signal for 1')
 
     # Амплитудная детекция для отфильтрованного сигнала для значения 0
     envelope_filtered0 = amplitude_demodulation(filtered_signal0)
-    plot_waveform(t, envelope_filtered0, 'Amplitude Envelope for Filtered Signal 0')
+    # plot_waveform(t, envelope_filtered0, 'Amplitude Envelope for Filtered Signal 0')
 
     # Амплитудная детекция для отфильтрованного сигнала для значения 1
     envelope_filtered1 = amplitude_demodulation(filtered_signal1)
-    plot_waveform(t, envelope_filtered1, 'Amplitude Envelope for Filtered Signal 1')
+    # plot_waveform(t, envelope_filtered1, 'Amplitude Envelope for Filtered Signal 1')
 
     threshold = 0.4
 
     comparatored_signal = comparator(envelope_filtered1, threshold)
-    plot_waveform(t, comparatored_signal, 'Comparatored Signal')
+    # plot_waveform(t, comparatored_signal, 'Comparatored Signal')
+
+    # Fourth method
+    # Корреляционная демодуляция.
+    demodulated_signal, correlated_signal = correlation_demodulation(carrier_freq2, noisy_fsk_signal, sampling_rate)
+    plot_waveform(t, correlated_signal, "correlated_signal1")
+
+    # # Построение графика демодулированного сигнала.
+    plot_waveform(t, demodulated_signal, 'Correlation Demodulation Signal')
+
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(2, 1, 1)
+    plt.plot(noisy_fsk_signal, label='Correlated Signal')
+    plt.title('Correlated Signal')
+    plt.grid(True)
+
+    plt.subplot(2, 1, 2)
+    plt.plot(demodulated_signal, label='Demodulated Signal', color='orange')
+    plt.title('Demodulated Signal')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude')
+    plt.grid(True)
+    plt.show()
+
+    plot_spectrum(demodulated_signal, sampling_rate, "correlated_signal")
+
+    # # Fivths method
+    # # Корреляционная демодуляция.
+    carrier_freq_infradyne = 20000
+    demodulated_signal, correlated_signal, noisy_fsk_signal = superheterodyne_demodulation(carrier_freq_infradyne, noisy_fsk_signal, sampling_rate)
+
+    # # Построение графика демодулированного сигнала.
+    # plot_waveform(t, demodulated_signal, 'Superheterodyne Demodulation Signal')
+    # plot_waveform(t, correlated_signal, "correlated_signal")
+    # plot_spectrum(correlated_signal, sampling_rate, "correlated_signal")
+    # plot_waveform(t, noisy_fsk_signal, "correlated_signal")
 
 
 if __name__ == '__main__':
