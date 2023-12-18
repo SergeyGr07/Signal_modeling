@@ -127,14 +127,18 @@ def correlation_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
     integrator_function = np.cumsum(correlated_signal) / sampling_rate
 
     # direvative_function = np.
+    derivative_function = np.gradient(integrator_function, 1 / sampling_rate)
 
-    # выделить рост, постоянные сместить к нулю, сделать пилообразный
+    # Выделить рост, постоянные сместить к нулю, сделать пилообразный
+    growth_signal = np.where(derivative_function > 0, derivative_function, 0)
+    constant_shifted_signal = integrator_function - np.mean(integrator_function)
+    sawtooth_signal = constant_shifted_signal - growth_signal
 
     threshold = 0.4
 
-    demodulated_signal = comparator(integrator_function, threshold)
+    demodulated_signal = comparator(sawtooth_signal, threshold)
 
-    return integrator_function, correlated_signal
+    return demodulated_signal, correlated_signal
 
 
 def butter_lowpass_filter(data, cutoff_freq, sampling_rate, order=5):
@@ -143,6 +147,16 @@ def butter_lowpass_filter(data, cutoff_freq, sampling_rate, order=5):
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
     filtered_data = lfilter(b, a, data)
     return filtered_data
+
+
+def butter_bandpass_filter(data, low_cutoff, high_cutoff, sampling_rate, order=5):
+    nyquist = 0.5 * sampling_rate
+    low = low_cutoff / nyquist
+    high = high_cutoff / nyquist
+    b, a = butter(N=6, Wn=[low, high], btype='band')
+    filtered_signal = lfilter(b, a, data)
+
+    return filtered_signal
 
 
 # infradyne
@@ -160,19 +174,12 @@ def superheterodyne_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
     # Добавление полосового фильтра от 21000 до 27000 Гц.
     low_cutoff = 21000
     high_cutoff = 27000
-    nyquist = 0.5 * sampling_rate
-    low = low_cutoff / nyquist
-    high = high_cutoff / nyquist
-    b, a = butter(N=6, Wn=[low, high], btype='band')
-    filtered_signal = lfilter(b, a, correlated_signal)
+    filtered_signal = butter_bandpass_filter(correlated_signal, low_cutoff, high_cutoff, sampling_rate)
 
     low_cutoff = 24000
     high_cutoff = 28000
-    nyquist = 0.5 * sampling_rate
-    low = low_cutoff / nyquist
-    high = high_cutoff / nyquist
-    b, a = butter(N=6, Wn=[low, high], btype='band')
-    filtered_signal = lfilter(b, a, filtered_signal)
+
+    filtered_signal = butter_bandpass_filter(filtered_signal, low_cutoff, high_cutoff, sampling_rate)
 
     # Амплитудная детекция.
     envelope_signal = amplitude_demodulation(filtered_signal)
@@ -181,7 +188,7 @@ def superheterodyne_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
     threshold = 0.4
     demodulated_signal = comparator(envelope_signal, threshold)
 
-    return envelope_signal, filtered_signal, noisy_fsk_signal
+    return demodulated_signal, filtered_signal, noisy_fsk_signal
 
 
 def main():
@@ -272,7 +279,7 @@ def main():
     demodulated_signal, correlated_signal, noisy_fsk_signal = superheterodyne_demodulation(carrier_freq_infradyne, noisy_fsk_signal, sampling_rate)
 
     # # Построение графика демодулированного сигнала.
-    # plot_waveform(t, demodulated_signal, 'Superheterodyne Demodulation Signal')
+    plot_waveform(t, demodulated_signal, 'Superheterodyne Demodulation Signal')
     # plot_waveform(t, correlated_signal, "correlated_signal")
     # plot_spectrum(correlated_signal, sampling_rate, "correlated_signal")
     # plot_waveform(t, noisy_fsk_signal, "correlated_signal")
