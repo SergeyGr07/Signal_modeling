@@ -125,20 +125,21 @@ def correlation_demodulation(carrier_freq, noisy_fsk_signal, sampling_rate):
     # filtered_signal = butter_lowpass_filter(noisy_fsk_signal, 2000, sampling_rate)
     # Интегратор
     integrator_function = np.cumsum(correlated_signal) / sampling_rate
-
+    window_size = 70
+    moving_average = np.convolve(integrator_function, np.ones(window_size) / window_size, mode='same')[:signal_length]
     # direvative_function = np.
-    derivative_function = np.gradient(integrator_function, 1 / sampling_rate)
+    derivative_function = np.gradient(moving_average, 1 / sampling_rate)
 
     # Выделить рост, постоянные сместить к нулю, сделать пилообразный
-    growth_signal = np.where(derivative_function > 0, derivative_function, 0)
-    constant_shifted_signal = integrator_function - np.mean(integrator_function)
-    sawtooth_signal = constant_shifted_signal - growth_signal
+    # growth_signal = np.where(derivative_function > 0, derivative_function, 0)
+    # constant_shifted_signal = integrator_function - np.mean(integrator_function)
+    # sawtooth_signal = constant_shifted_signal - growth_signal
 
-    threshold = 0.4
+    threshold = 0.2
 
-    demodulated_signal = comparator(sawtooth_signal, threshold)
+    demodulated_signal = comparator(derivative_function, threshold)
 
-    return demodulated_signal, correlated_signal
+    return demodulated_signal, moving_average
 
 
 def butter_lowpass_filter(data, cutoff_freq, sampling_rate, order=5):
@@ -251,7 +252,7 @@ def main():
     # Fourth method
     # Корреляционная демодуляция.
     demodulated_signal, correlated_signal = correlation_demodulation(carrier_freq2, noisy_fsk_signal, sampling_rate)
-    plot_waveform(t, correlated_signal, "correlated_signal1")
+    plot_waveform(t, correlated_signal, "moving_average")
 
     # # Построение графика демодулированного сигнала.
     plot_waveform(t, demodulated_signal, 'Correlation Demodulation Signal')
@@ -279,7 +280,7 @@ def main():
     demodulated_signal, correlated_signal, noisy_fsk_signal = superheterodyne_demodulation(carrier_freq_infradyne, noisy_fsk_signal, sampling_rate)
 
     # # Построение графика демодулированного сигнала.
-    plot_waveform(t, demodulated_signal, 'Superheterodyne Demodulation Signal')
+    # plot_waveform(t, demodulated_signal, 'Superheterodyne Demodulation Signal')
     # plot_waveform(t, correlated_signal, "correlated_signal")
     # plot_spectrum(correlated_signal, sampling_rate, "correlated_signal")
     # plot_waveform(t, noisy_fsk_signal, "correlated_signal")
